@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Every job always exists (so branch protection can require it); steps that
+# validate a component are skipped until that component is in the repository.
+jobs:
+  lint:
+    name: Lint YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: Run yamllint
+        run: yamllint --strict .
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        if: hashFiles('tests/**/*.py') != ''
+        run: python -m unittest discover -s tests -t . -v
+
+  docker:
+    name: Docker build and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        if: hashFiles('docker/Dockerfile') != ''
+        run: docker build -f docker/Dockerfile -t devops-app:ci .
+      - name: Smoke test container
+        if: hashFiles('docker/Dockerfile') != ''
+        run: |
+          docker run -d --name app -p 8080:8080 devops-app:ci
+          for _ in $(seq 1 20); do
+            if curl -fsS http://localhost:8080/health; then
+              echo; echo "Service is healthy"
+              curl -fsS http://localhost:8080/metrics | head -n 5
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs app
+          exit 1
+
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        if: hashFiles('terraform/*.tf') != ''
+      - name: terraform fmt
+        if: hashFiles('terraform/*.tf') != ''
+        run: terraform fmt -check -recursive -diff
+      - name: terraform init
+        if: hashFiles('terraform/*.tf') != ''
+        run: terraform init -backend=false -input=false
+      - name: terraform validate
+        if: hashFiles('terraform/*.tf') != ''
+        run: terraform validate
+
+  kubernetes:
+    name: Validate Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubeconform
+        if: hashFiles('kubernetes/*.yaml') != ''
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar xz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+      - name: Run kubeconform
+        if: hashFiles('kubernetes/*.yaml') != ''
+        run: kubeconform -strict -summary kubernetes/
+
+  ansible:
+    name: Ansible syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ansible-core
+        if: hashFiles('ansible/playbook.yml') != ''
+        run: pip install ansible-core
+      - name: Syntax check
+        if: hashFiles('ansible/playbook.yml') != ''
+        run: ansible-playbook --syntax-check -i ansible/inventory.ini ansible/playbook.yml
+
+  monitoring:
+    name: Validate Prometheus config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool check config
+        if: hashFiles('monitoring/prometheus.yml') != ''
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/monitoring:/etc/prometheus:ro" \
+            prom/prometheus:v2.53.0 check config /etc/prometheus/prometheus.yml
