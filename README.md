@@ -11,6 +11,7 @@
 |-----------|------------|-----------|
 | Приложение | Python 3.12 (stdlib), эндпоинты `/`, `/health`, `/metrics` | `app/`, `tests/` |
 | Контейнер | Docker, non-root, HEALTHCHECK | `docker/Dockerfile` |
+| Инфраструктура как код | Terraform + провайдер `kreuzwerker/docker` | `terraform/` |
 | CI | GitHub Actions: 7 проверок на каждый PR | `.github/workflows/ci.yml` |
 
 ## Структура репозитория
@@ -64,6 +65,22 @@ curl http://localhost:8080/metrics     # метрики Prometheus
 ```
 
 Тесты приложения: `python -m unittest discover -s tests -t . -v`
+
+### Terraform
+
+Terraform собирает образ из `docker/Dockerfile` и запускает контейнеры в отдельной сети.
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # при необходимости поправьте значения
+terraform init
+terraform plan
+terraform apply
+terraform output app_urls
+terraform destroy                              # удалить всё
+```
+
+Основные переменные: `environment` (dev/staging/prod), `image_tag`, `app_port`, `replicas` (1–5).
 
 ## CI/CD
 
