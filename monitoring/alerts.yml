@@ -1,0 +1,20 @@
+groups:
+  - name: devops-app
+    rules:
+      - alert: AppDown
+        expr: up{job="devops-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "devops-app is down ({{ $labels.instance }})"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for more than 1 minute."
+
+      - alert: AppHigh404Rate
+        expr: sum(rate(app_requests_total{status="404"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of 404 responses"
+          description: "More than 1 request per second returns 404 for 5 minutes."
