@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars and adjust (terraform.tfvars is git-ignored)
+project_name = "devops-infra"
+environment  = "dev"
+image_tag    = "1.0.0"
+app_port     = 8080
+replicas     = 2
