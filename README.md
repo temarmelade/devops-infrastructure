@@ -13,6 +13,8 @@
 | Контейнер | Docker, non-root, HEALTHCHECK | `docker/Dockerfile` |
 | Инфраструктура как код | Terraform + провайдер `kreuzwerker/docker` | `terraform/` |
 | Оркестрация | Kubernetes: Deployment (2 реплики, probes, limits) + Service | `kubernetes/` |
+| Конфигурация серверов | Ansible playbook | `ansible/` |
+| Мониторинг | Prometheus: scrape-конфиг и алерты | `monitoring/` |
 | CI | GitHub Actions: 7 проверок на каждый PR | `.github/workflows/ci.yml` |
 
 ## Структура репозитория
@@ -97,6 +99,28 @@ kubectl port-forward svc/devops-app 8080:80
 Deployment: 2 реплики, RollingUpdate без простоя, readiness/liveness probes на `/health`,
 requests/limits, запуск от non-root с read-only файловой системой.
 
+### Ansible
+
+```bash
+# впишите адрес сервера в ansible/inventory.ini
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+```
+
+Playbook ставит Docker, забирает код из этого репозитория, собирает образ, запускает контейнер
+и ждёт, пока `/health` ответит 200.
+
+### Мониторинг
+
+```bash
+docker network create monitoring
+docker run -d --name app --network monitoring devops-app:1.0.0
+docker run -d --name prometheus --network monitoring -p 9090:9090 \
+  -v "$PWD/monitoring:/etc/prometheus" prom/prometheus:v2.53.0
+```
+
+Prometheus доступен на http://localhost:9090. Алерты: `AppDown` (приложение недоступно > 1 мин)
+и `AppHigh404Rate`.
+
 ## CI/CD
 
 Workflow `.github/workflows/ci.yml` запускается на каждый Pull Request и push в `main`:
@@ -110,3 +134,18 @@ Workflow `.github/workflows/ci.yml` запускается на каждый Pul
 | Validate Kubernetes manifests | `kubeconform -strict` |
 | Ansible syntax check | `ansible-playbook --syntax-check` |
 | Validate Prometheus config | `promtool check config` (вместе с правилами алертов) |
+
+## Развёртывание
+
+Пошаговая инструкция для всех способов (Docker, Terraform, Kubernetes, Ansible), обновление
+и откат — в [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Git workflow
+
+- `main` — стабильная ветка, защищена: изменения только через Pull Request, все 7 проверок CI должны пройти.
+- Работа ведётся в feature-ветках: `feature/ci-pipeline`, `feature/docker-app`, `feature/terraform-infra`,
+  `feature/kubernetes-manifests`, `feature/ansible-monitoring`.
+- Коммиты в стиле [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `ci:`, `test:`, `chore:`.
+- PR оформляются по шаблону `.github/pull_request_template.md`: описание, список изменений, как проверено.
+- Пример разрешённого конфликта: ветки Terraform и Kubernetes одновременно меняли README;
+  конфликт разрешён в коммите `merge: resolve README conflict ...` в `feature/kubernetes-manifests`.
