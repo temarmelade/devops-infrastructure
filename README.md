@@ -11,6 +11,7 @@
 |-----------|------------|-----------|
 | Приложение | Python 3.12 (stdlib), эндпоинты `/`, `/health`, `/metrics` | `app/`, `tests/` |
 | Контейнер | Docker, non-root, HEALTHCHECK | `docker/Dockerfile` |
+| Оркестрация | Kubernetes: Deployment (2 реплики, probes, limits) + Service | `kubernetes/` |
 | CI | GitHub Actions: 7 проверок на каждый PR | `.github/workflows/ci.yml` |
 
 ## Структура репозитория
@@ -64,6 +65,20 @@ curl http://localhost:8080/metrics     # метрики Prometheus
 ```
 
 Тесты приложения: `python -m unittest discover -s tests -t . -v`
+
+### Kubernetes
+
+```bash
+kind create cluster --name devops                 # или minikube start
+docker build -f docker/Dockerfile -t devops-app:1.0.0 .
+kind load docker-image devops-app:1.0.0 --name devops
+kubectl apply -f kubernetes/
+kubectl rollout status deployment/devops-app
+kubectl port-forward svc/devops-app 8080:80
+```
+
+Deployment: 2 реплики, RollingUpdate без простоя, readiness/liveness probes на `/health`,
+requests/limits, запуск от non-root с read-only файловой системой.
 
 ## CI/CD
 
