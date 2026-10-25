@@ -1,0 +1,15 @@
+.git
+.github
+.terraform
+**/__pycache__
+*.pyc
+.venv
+venv
+tests
+terraform
+ansible
+kubernetes
+monitoring
+docs
+*.md
+.env
