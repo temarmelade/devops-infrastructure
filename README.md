@@ -1,5 +1,7 @@
 # DevOps Infrastructure Repository
 
+[![CI](https://github.com/temarmelade/devops-infrastructure/actions/workflows/ci.yml/badge.svg)](https://github.com/temarmelade/devops-infrastructure/actions/workflows/ci.yml)
+
 Учебный DevOps-репозиторий: небольшое веб-приложение и вся инфраструктура вокруг него как код —
 контейнер, Terraform, Kubernetes, Ansible, мониторинг и CI на GitHub Actions.
 
@@ -7,7 +9,7 @@
 
 | Компонент | Инструмент | Где лежит |
 |-----------|------------|-----------|
-| — | Компоненты добавляются через feature-ветки и Pull Request'ы | — |
+| CI | GitHub Actions: 7 проверок на каждый PR | `.github/workflows/ci.yml` |
 
 ## Структура репозитория
 
@@ -49,3 +51,17 @@
 git clone https://github.com/temarmelade/devops-infrastructure.git
 cd devops-infrastructure
 ```
+
+## CI/CD
+
+Workflow `.github/workflows/ci.yml` запускается на каждый Pull Request и push в `main`:
+
+| Job | Что проверяет |
+|-----|---------------|
+| Lint YAML | `yamllint --strict` по всему репозиторию |
+| Unit tests | тесты приложения |
+| Docker build and smoke test | сборка образа, запуск контейнера, проверка `/health` |
+| Terraform validate | `terraform fmt -check`, `init`, `validate` |
+| Validate Kubernetes manifests | `kubeconform -strict` |
+| Ansible syntax check | `ansible-playbook --syntax-check` |
+| Validate Prometheus config | `promtool check config` (вместе с правилами алертов) |
