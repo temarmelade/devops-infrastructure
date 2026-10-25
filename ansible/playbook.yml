@@ -1,0 +1,93 @@
+---
+# Provisions an Ubuntu/Debian host: installs Docker, builds the app image
+# from this repository and runs it as a container.
+#
+#   ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+- name: Provision application server
+  hosts: app_servers
+  become: true
+
+  vars:
+    app_name: devops-app
+    app_version: "1.0.0"
+    app_port: 8080
+    app_dir: /opt/devops-app
+    repo_url: "https://github.com/{{ github_owner | default('temarmelade') }}/devops-infrastructure.git"
+    deploy_user: "{{ ansible_user | default('ubuntu') }}"
+
+  pre_tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - git
+          - curl
+        state: present
+
+    - name: Ensure Docker is running and enabled on boot
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add deploy user to the docker group
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: docker
+        append: true
+
+    - name: Fetch application source
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main
+        force: true
+      register: source
+
+    - name: Build application image
+      ansible.builtin.command:
+        cmd: docker build -f docker/Dockerfile -t {{ app_name }}:{{ app_version }} .
+        chdir: "{{ app_dir }}"
+      when: source.changed
+      changed_when: true
+      notify: Restart application
+
+    - name: Check whether the container exists
+      ansible.builtin.command:
+        cmd: docker ps -a --filter name=^{{ app_name }}$ --format '{{ '{{' }}.Names{{ '}}' }}'
+      register: container
+      changed_when: false
+
+    - name: Start application container
+      ansible.builtin.command:
+        cmd: >-
+          docker run -d --name {{ app_name }} --restart unless-stopped
+          -p {{ app_port }}:8080 -e APP_ENV=production -e APP_VERSION={{ app_version }}
+          {{ app_name }}:{{ app_version }}
+      when: container.stdout == ""
+      changed_when: true
+
+  post_tasks:
+    - name: Wait until the application is healthy
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ app_port }}/health"
+        status_code: 200
+      register: health
+      retries: 10
+      delay: 3
+      until: health.status == 200
+
+  handlers:
+    - name: Restart application
+      ansible.builtin.shell: |
+        docker rm -f {{ app_name }} || true
+        docker run -d --name {{ app_name }} --restart unless-stopped \
+          -p {{ app_port }}:8080 -e APP_ENV=production -e APP_VERSION={{ app_version }} \
+          {{ app_name }}:{{ app_version }}
+      changed_when: true
