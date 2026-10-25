@@ -9,6 +9,8 @@
 
 | Компонент | Инструмент | Где лежит |
 |-----------|------------|-----------|
+| Приложение | Python 3.12 (stdlib), эндпоинты `/`, `/health`, `/metrics` | `app/`, `tests/` |
+| Контейнер | Docker, non-root, HEALTHCHECK | `docker/Dockerfile` |
 | CI | GitHub Actions: 7 проверок на каждый PR | `.github/workflows/ci.yml` |
 
 ## Структура репозитория
@@ -51,6 +53,17 @@
 git clone https://github.com/temarmelade/devops-infrastructure.git
 cd devops-infrastructure
 ```
+
+### Docker
+
+```bash
+docker build -f docker/Dockerfile -t devops-app:1.0.0 .
+docker run -d --name devops-app -p 8080:8080 devops-app:1.0.0
+curl http://localhost:8080/health      # {"status": "ok"}
+curl http://localhost:8080/metrics     # метрики Prometheus
+```
+
+Тесты приложения: `python -m unittest discover -s tests -t . -v`
 
 ## CI/CD
 
