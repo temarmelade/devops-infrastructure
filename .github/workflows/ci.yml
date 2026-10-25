@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Every job always exists (so branch protection can require it); steps that
+# validate a component are skipped until that component is in the repository.
+jobs:
+  lint:
+    name: Lint YAML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: Run yamllint
+        run: yamllint --strict .
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        if: hashFiles('tests/**/*.py') != ''
+        run: python -m unittest discover -s tests -t . -v
+
